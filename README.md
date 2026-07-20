@@ -1,5 +1,7 @@
 # 📚 大図書館 — AIが自分を覚えてくれない問題、これで終わり
 
+> 🌍 **English version**: [ai-context-library](https://github.com/fuyutosan/ai-context-library) — Daitoshokan (The Great Library), a plain-Markdown memory system for AI assistants
+
 ChatGPTやClaudeに、毎回「私はこういう人間で、こういうプロジェクトをやっていて…」と説明し直すのに疲れていませんか？
 
 **大図書館**は、AIとの作業コンテキスト（あなたのこと・プロジェクトのこと・過去の判断）を「目録→棚→日誌」という3層のシンプルなMarkdownファイルで貯めておく仕組みです。プログラミング不要、コピペと箇条書きだけで作れます。
