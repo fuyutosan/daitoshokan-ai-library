@@ -14,3 +14,10 @@
 - validatorを利用者の library にも実行できるようパス引数に対応
 - GitHub ActionsをNode 24対応版（checkout@v5 / setup-python@v6）へ更新
 - テストをテンポラリ複製上で実行するよう変更（中断しても作業ツリーが壊れない）。8件→16件
+- 安全ルールを「語があるか」ではなく「その意味の文が残っているか」で検査するよう変更。
+  禁止文の反転・緩和、安全文書の空洞化、README安全節や `/log` `/tidy` の安全行の削除を検出する
+- 秘密情報スキャンにOpenAIプロジェクトキー（`sk-proj-`）とGitHub fine-grained PAT（`github_pat_`）を追加
+- 検証をtemplate（公開テンプレ全体）とinstalled（導入済みlibraryのみ）の2モードに分離。
+  `--mode` で指定でき、省略時は自動判定する
+- `docs/` を `library/docs/` へ移動。導入先へ一緒にコピーされ、運用ルールからの参照が切れなくなった
+- テスト複製をROOT.parent配下のUUID付きフォルダ方式に変更（tempfile非依存）。16件→36件

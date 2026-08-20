@@ -29,7 +29,7 @@
 
 5. `library/` が既にあるか確認する。**あれば上書きせず、利用者に「既存の library があります。中に統合しますか、別名にしますか」と聞いて止まる**
 
-安全の詳細と、書いてはいけない情報は [安全とプライバシー](docs/安全とプライバシー.md) を参照する。APIキー、トークン、パスワード、Cookie/セッション、`.env`/認証ファイルの中身、金融情報、住所・電話・メール、顧客の非公開情報、生ログは記録しない。値を書かず「移した」「設定した」とだけ記録する。
+安全の詳細と、書いてはいけない情報は [安全とプライバシー](library/docs/安全とプライバシー.md) を参照する。APIキー、トークン、パスワード、Cookie/セッション、`.env`/認証ファイルの中身、金融情報、住所・電話・メール、顧客の非公開情報、生ログは記録しない。値を書かず「移した」「設定した」とだけ記録する。
 
 ## 手順1：ファイルを取得する
 
@@ -45,6 +45,8 @@ git clone https://github.com/fuyutosan/daitoshokan-ai-library.git
 library/目録.md
 library/運用ルール.md
 library/日誌/README.md
+library/docs/安全とプライバシー.md
+library/docs/複数AIで使う場合.md
 library/棚/仕事.md
 library/棚/趣味・創作.md
 library/棚/AI活用術.md
@@ -66,6 +68,7 @@ raw の URL は `https://raw.githubusercontent.com/fuyutosan/daitoshokan-ai-libr
 │   ├── 目録.md
 │   ├── 運用ルール.md
 │   ├── 棚/（4冊）
+│   ├── docs/（安全とプライバシー・複数AIで使う場合）
 │   └── 日誌/README.md
 └── <常時ファイル>
 ```
@@ -119,6 +122,13 @@ Claude Code なら、`commands/log.md` と `commands/tidy.md` を `.claude/comma
 - [ ] `library/目録.md` の棚一覧と、`library/棚/` の実ファイルが一致している
 - [ ] `<常時ファイル>` にスニペットが入っている
 - [ ] 手順0の公開状態の確認を行い、public/不明だった場合は `library/` をGit追跡しない案を利用者に提示して、返事をもらった
+- [ ] （任意・推奨）手順1で取得した一時フォルダが残っていれば、導入後の点検を1回走らせた
+
+      ```
+      python <取得したフォルダ>/scripts/validate_library.py <作業フォルダ> --mode installed
+      ```
+
+      秘密情報の混入・目録と棚のズレ・安全ルールの欠落をまとめて見ます。合格しなくても導入は完了ですが、内容は利用者に伝えてください
 - [ ] `library/日誌/` に今月のファイル（`YYYY-MM.md`）を作り、この導入作業自体を1件目のエントリとして書いた
       （見出しは `## YYYY-MM-DD 大図書館を導入した ｜棚:◯◯` の形。導入時の実行日を使います）
 
