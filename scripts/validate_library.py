@@ -1,15 +1,32 @@
 """大図書館の静的検査（標準ライブラリのみ）。
 
-2つのモードがある。
+## 何を保証し、何を保証しないか
 
-- template  … 公開テンプレート全体（このリポジトリ）を検査する
-- installed … 利用者のプロジェクトに導入された `library/` だけを検査する
+この検査は **日本語の意味を判定しない**。安全ルールは「安全契約ブロック」として
+原文で固定されており、可視本文の中に1文字ずつ一致する形で存在するかだけを見る。
 
-省略時は中身を見て自動判定する。使い方:
+- 契約ブロックを消す・並べ替える・言い換える → **不合格**（同義の言い換えも不合格）
+- 契約ブロックをHTMLコメント・コードブロック・引用の中へ退避する → **不合格**
+- 契約行の末尾に「ただし〜」を継ぎ足す → **不合格**（行全体で照合するため）
 
-    python scripts/validate_library.py                    # このリポジトリ
-    python scripts/validate_library.py <プロジェクト>      # 導入済みのlibrary
-    python scripts/validate_library.py <パス> --mode installed
+契約を書き換えたいときは、このファイルの `SAFETY_CONTRACT` と、
+`tests/test_validate_library.py` の固定ハッシュを両方直す必要がある。片方だけでは通らない。
+
+別行に矛盾する許可文を足す攻撃は `FORBIDDEN_STATEMENTS` で拾うが、
+これは**列挙による網であって証明ではない**。網羅は主張しない。
+
+## 2つのモード
+
+- template  … 公開テンプレート全体を検査する
+- installed … 利用者のプロジェクトに導入された `library/` **だけ**を検査する
+
+モードは自動判定しない（判定が壊れると弱いほうへ倒れるため）。
+Python APIの既定は `template`（最も厳しい側）。CLIはパス省略で `template`、
+パス指定で `installed`、`--mode` があればそれが優先される。
+
+    python scripts/validate_library.py --mode template
+    python scripts/validate_library.py <プロジェクト> --mode installed
+    python scripts/validate_library.py <プロジェクト> --instructions-file <プロジェクト>/CLAUDE.md
 """
 
 from __future__ import annotations
@@ -22,14 +39,12 @@ from pathlib import Path
 TEMPLATE = "template"
 INSTALLED = "installed"
 
-# 導入先にも必ずコピーされるもの（library/ の中身）
 LIBRARY_REQUIRED_FILES = (
     "library/目録.md",
     "library/運用ルール.md",
     "library/docs/安全とプライバシー.md",
     "library/docs/複数AIで使う場合.md",
 )
-# 公開テンプレートにだけ存在するもの
 TEMPLATE_ONLY_REQUIRED_FILES = (
     "README.md",
     "INSTALL.md",
@@ -40,74 +55,102 @@ TEMPLATE_ONLY_REQUIRED_FILES = (
     "commands/tidy.md",
 )
 
-SAFETY_TERMS = (
-    "APIキー",
-    "トークン",
-    "パスワード",
-    "Cookie/セッション",
-    ".env",
-    "金融情報",
-    "住所・電話・メール",
-    "生ログ",
-)
-# 安全語がそろっているかを見るファイル
-LIBRARY_SAFETY_TERM_FILES = ("library/運用ルール.md",)
-TEMPLATE_SAFETY_TERM_FILES = ("INSTALL.md", "snippets/claude-md-snippet.md")
+# library/ 配下で Markdown 以外に置いてよいもの
+LIBRARY_ALLOWED_NON_MARKDOWN = (".gitkeep", ".gitignore")
 
-# 「語がある」ではなく「その意味の文が残っている」ことを見る。
-# 反転（〜を必ず書く）や節ごと削除は、ここで落ちる。
-LIBRARY_REQUIRED_STATEMENTS = {
+INSTALLED_CAVEAT = (
+    "注記: library/ 本体のみ検査しました。常時読み込みファイル（CLAUDE.md / AGENTS.md 等）は"
+    "未検査です。--instructions-file <パス> で指定すると検査します。"
+)
+
+# --- 安全契約ブロック（ここが原文の正。文書側をこれに合わせる） ---------------
+
+SAFETY_CONTRACT = {
     "library/運用ルール.md": (
-        ("安全とプライバシーの節", r"^### 安全とプライバシー\s*$"),
-        ("秘密情報を書かない旨", r"APIキー[^\n]*は書かない"),
-        ("生ログを書かない旨", r"生ログ[^\n]*は書かない"),
-        ("漏えい時に無効化を最優先する旨", r"漏えい[^\n]*無効化"),
-        ("書き手を1つに絞る節", r"^### 書き手は1つだけ\s*$"),
-        ("書き手を1つに決める旨", r"AIは1つに決める"),
+        ("秘密情報の記録禁止", (
+            '### 安全とプライバシー',
+            '- APIキー、トークン、パスワード、Cookie/セッション、`.env`や認証ファイルの中身、金融情報、住所・電話・メール、顧客の非公開情報は書かない',
+            '- 値や全文を記録せず、「APIキーを環境変数へ移した」「認証を設定した」のように完了事実だけを書く',
+            '- 誤って漏えいしたら、資格情報の無効化・再発行を最優先に行い、その後で履歴除去、Git除外設定、再発防止を行う。ファイル削除だけで完了扱いにしない',
+            '- 生ログ（会話全文・ターミナル全文・エラー全文）は書かない',
+            '- 詳しくは [安全とプライバシー](docs/安全とプライバシー.md)',
+        )),
+        ("書き手は1つだけ", (
+            '### 書き手は1つだけ',
+            '- この `library/` に書き込むAIは1つに決める。同じ日誌へ複数のAIが同時に追記すると、重複と誤った `✅` が起きる',
+            '- 複数のAIを使うなら、未検品の記録は `library/` の**外**の staging に置き、検品済みだけを単一の経路で昇格させる',
+            '- 詳しくは [複数AIで使う場合](docs/複数AIで使う場合.md)',
+        )),
     ),
     "library/docs/安全とプライバシー.md": (
-        ("Git管理から外す案内", r"^## GitHubへ公開しない\s*$"),
-        ("記録禁止の節", r"^## 記録禁止\s*$"),
-        ("記録しない旨", r"APIキー[^\n]*は記録しません"),
-        ("漏えい時の節", r"^## 漏えい時\s*$"),
-        ("資格情報を無効化する旨", r"資格情報を直ちに無効化"),
+        ("GitHubへ公開しない", (
+            '## GitHubへ公開しない',
+            '導入先がpublic、またはvisibilityを確認できない場合は、個人用 `library/` をGit追跡しない運用を推奨します。ローカルの自分だけで除外するなら `.git/info/exclude`、チームで共有するなら `.gitignore` を選びます。AIが勝手に設定を変更せず、変更内容を示して利用者の明示確認を得てください。privateでも、共有範囲は毎回確認します。',
+        )),
+        ("記録禁止", (
+            '## 記録禁止',
+            'APIキー、トークン、パスワード、Cookie/セッション、`.env`や認証ファイルの中身、金融情報、住所・電話・メール、顧客の非公開情報、生ログ（会話全文・ターミナル全文・エラー全文）は記録しません。',
+            '値を残す代わりに「APIキーを環境変数へ移した」「認証を設定した」とだけ書きます。必要な成果物は安全な保管場所へのリンクまたは一般化した説明にします。',
+        )),
+        ("漏えい時", (
+            '## 漏えい時',
+            '1. 資格情報を直ちに無効化し、再発行する',
+            '2. 公開範囲を確認し、Git履歴から除去する',
+            '3. `.gitignore`または`.git/info/exclude`へ追加する',
+            '4. 何が起きたかと再発防止策を、秘密の値を含めず記録する',
+            '単にファイルを削除するだけでは、Git履歴に残るため完了扱いにしません。',
+        )),
     ),
     "library/docs/複数AIで使う場合.md": (
-        ("書き手を1エージェントにする旨", r"書き手を1エージェント"),
-        ("正本を1つにする旨", r"正本は1つだけにする"),
-        ("stagingを正本の内側に作らない旨", r"stagingを正本の内側に作らない"),
-    ),
-}
-TEMPLATE_REQUIRED_STATEMENTS = {
-    "README.md": (
-        ("安全に使う節", r"^## 🔒 安全に使う\s*$"),
-        ("書かないでほしい旨", r"書かないでください"),
+        ("書き手を1つにする前提", (
+            '通常は、1つの `library/` に対して書き手を1エージェントにしてください。同じ日誌へClaudeとCodexが同時に追記すると、重複や誤った `✅` が起きます。初心者にstaging運用を強制する必要はありません。',
+        )),
+        ("昇格の境界", (
+            '- 正本は1つだけにする',
+            '- 未検品の記録は `library/` の外のstagingへ置く',
+            '- `completed` かつ成果確認済みのものだけ、単一の昇格経路で正本へ移す',
+            '- `partial`、`blocked`、`abandoned` は昇格しない',
+            '- stagingを正本の内側に作らない',
+            '昇格前に、秘密情報・個人情報・顧客の非公開情報・生ログがないこと、目録と棚が一致することを確認します。',
+        )),
     ),
     "commands/log.md": (
-        ("秘密情報を書かない旨", r"APIキー[^\n]*書かない"),
+        ("記録時の禁止", (
+            '- APIキー・トークン・パスワード・個人情報・生ログは書かない。値を表示せず「移した／設定した」とだけ記録する',
+        )),
     ),
     "commands/tidy.md": (
-        ("禁止情報を転記しない旨", r"禁止情報[^\n]*転記しない"),
+        ("整理時の禁止", (
+            '- APIキー・トークン・パスワード・個人情報・生ログなどの禁止情報を見つけたエントリは棚へ転記しない。値を表示せず利用者へ報告し、資格情報なら無効化・再発行を優先する',
+        )),
     ),
-    "snippets/claude-md-snippet.md": (
-        ("常時指示の安全行", r"\*\*安全\*\*[^\n]*記録しない"),
-        ("常時指示の書き手行", r"\*\*書き手\*\*[^\n]*1つだけ"),
-    ),
-    "INSTALL.md": (
-        ("常時指示の安全行", r"\*\*安全\*\*[^\n]*記録しない"),
-        ("常時指示の書き手行", r"\*\*書き手\*\*[^\n]*1つだけ"),
+    "README.md": (
+        ("安全に使う", (
+            '## 🔒 安全に使う',
+            '公開テンプレと、導入後に作られる個人用 `library/` は別物です。個人用 `library/` には、APIキー、トークン、パスワード、Cookie/セッション、`.env`や認証ファイルの中身、金融情報、住所・電話・メール、顧客の非公開情報、生ログを書かないでください。詳しい確認手順は [安全とプライバシー](library/docs/安全とプライバシー.md) と [複数AIで使う場合](library/docs/複数AIで使う場合.md) を参照してください。',
+        )),
     ),
 }
 
-# 書いてあってはいけない表現（禁止の反転・緩和）
+# 常時読み込みファイルへ貼る2行（スニペット側の契約）
+SNIPPET_CONTRACT = (
+    '**安全** — APIキー、トークン、パスワード、Cookie/セッション、`.env`/認証ファイルの中身、金融情報、住所・電話・メール、顧客の非公開情報、生ログは記録しない。値を書かず「移した」「設定した」とだけ記録する。',
+    '**書き手** — この `library/` に書くAIは1つだけ。別のAIも使うなら、`library/` の外に staging を作ってそこへ書き、検品したものだけを1つの経路で `library/` へ移す。同じ日誌に2つのAIが同時に追記しない。',
+)
+
+# 契約の隣に矛盾する許可文を足す攻撃への網。網羅は主張しない。
 FORBIDDEN_STATEMENTS = (
     (
-        "禁止情報を書く指示",
+        "禁止情報の記録を許す記述",
         re.compile(
-            r"(APIキー|トークン|パスワード|個人情報|秘密情報|生ログ)"
+            r"(APIキー|トークン|パスワード|個人情報|秘密情報|生ログ|認証情報|資格情報)"
             r"[^\n]{0,80}?"
-            r"(を必ず書く|は必ず書く|を必ず記録|は必ず記録|は書いてよい|を書いてよい"
-            r"|も書いてよい|は記録してよい|を記録してよい|は書いても(?:よい|構わない))"
+            r"(を必ず書く|は必ず書く|を必ず記録|は必ず記録"
+            r"|は書いてよい|を書いてよい|も書いてよい|は書いても(?:よい|構わない)"
+            r"|は記録してよい|を記録してよい|は保存してよい|を保存してよい"
+            r"|は残してよい|を残してよい"
+            r"|の記録を許可|の記載を許可|の保存を許可|の記録は許可"
+            r"|を許可する|は許可する|を例外とする|は例外とする)"
         ),
     ),
 )
@@ -117,7 +160,7 @@ SECRET_PATTERNS = (
     ("Anthropic APIキー", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{8,}")),
     ("OpenAI APIキー", re.compile(r"\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}")),
     ("OpenAI APIキー", re.compile(r"\bsk-[A-Za-z0-9]{20,}")),
-    ("GitHubトークン", re.compile(r"\bghp_[A-Za-z0-9]{20,}|\bgh[ousr]_[A-Za-z0-9]{20,}")),
+    ("GitHubトークン", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}")),
     ("GitHubトークン", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{30,}")),
     ("AWSアクセスキー", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("Slackトークン", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}")),
@@ -129,37 +172,63 @@ SECRET_PATTERNS = (
             r"[A-Za-z0-9._%+-]+@(?!example\.(?:com|org|net))[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
         ),
     ),
-    ("電話番号", re.compile(r"\b0\d{1,4}-\d{1,4}-\d{4}\b")),
+    # 電話番号: 区切りあり / ハイフンなし10〜11桁 / 国番号つき
+    ("電話番号", re.compile(r"\b0\d{1,3}[-\s]\d{1,4}[-\s]\d{3,4}\b")),
+    ("電話番号", re.compile(r"(?<!\d)0\d{9,10}(?!\d)")),
+    ("電話番号", re.compile(r"\+\d{1,3}[-\s]?(?:\d[-\s]?){8,13}\d")),
 )
 
 
-def detect_mode(root: Path) -> str:
-    """公開テンプレートか、導入済みの library かを中身から判定する。"""
-    if (root / "INSTALL.md").is_file() and (root / "snippets").is_dir():
-        return TEMPLATE
-    return INSTALLED
+def _visible_lines(text: str) -> list[str]:
+    """契約として数えてよい可視本文だけを返す。
+
+    HTMLコメント・コードブロック・引用は、読み手に規則として見えないので数えない。
+    """
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    lines, in_fence = [], False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("```") or line.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence or line.startswith(">") or not line:
+            continue
+        lines.append(line)
+    return lines
 
 
-def _scan_roots(root: Path, mode: str) -> tuple[Path, ...]:
-    """Markdownを走査する範囲。導入済みモードでは利用者の他のファイルを見に行かない。"""
-    return (root,) if mode == TEMPLATE else (root / "library",)
+def _fence_lines(text: str) -> list[str]:
+    """```markdown ブロックの中身（スニペットの貼り付け本文）。"""
+    match = re.search(r"```markdown\r?\n(.*?)\r?\n```", text, re.S)
+    if not match:
+        return []
+    return [l.strip() for l in match.group(1).splitlines() if l.strip()]
+
+
+def _contains_block(lines: list[str], block: tuple[str, ...]) -> bool:
+    size = len(block)
+    return any(lines[i : i + size] == list(block) for i in range(len(lines) - size + 1))
 
 
 def _markdown_files(root: Path, mode: str):
-    for base in _scan_roots(root, mode):
-        if base.is_dir():
-            yield from sorted(base.rglob("*.md"))
+    base = root if mode == TEMPLATE else root / "library"
+    if base.is_dir():
+        yield from sorted(base.rglob("*.md"))
+
+
+def _library_files(root: Path):
+    base = root / "library"
+    if base.is_dir():
+        yield from sorted(p for p in base.rglob("*") if p.is_file())
 
 
 def _check_links(root: Path, mode: str, errors: list[str]) -> None:
     pattern = re.compile(r"!?\[[^]]*\]\(([^)\s]+)(?:\s+[^)]*)?\)")
     for path in _markdown_files(root, mode):
-        text = path.read_text(encoding="utf-8")
-        for target in pattern.findall(text):
+        for target in pattern.findall(path.read_text(encoding="utf-8")):
             if target.startswith(("http://", "https://", "mailto:", "#")):
                 continue
-            target_path = (path.parent / target.split("#", 1)[0]).resolve()
-            if not target_path.is_file():
+            if not (path.parent / target.split("#", 1)[0]).resolve().is_file():
                 errors.append(f"link: {path.relative_to(root)} -> {target}")
 
 
@@ -168,8 +237,7 @@ def _check_catalog(root: Path, errors: list[str]) -> None:
     if not catalog.exists():
         errors.append("棚: library/目録.md がありません")
         return
-    text = catalog.read_text(encoding="utf-8")
-    listed = set(re.findall(r"\]\(棚/([^/)]+\.md)\)", text))
+    listed = set(re.findall(r"\]\(棚/([^/)]+\.md)\)", catalog.read_text(encoding="utf-8")))
     actual = {p.name for p in (root / "library" / "棚").glob("*.md")}
     if listed != actual:
         errors.append(f"棚: 目録={sorted(listed)} 実棚={sorted(actual)}")
@@ -177,7 +245,6 @@ def _check_catalog(root: Path, errors: list[str]) -> None:
 
 def _check_threshold(root: Path, mode: str, errors: list[str]) -> None:
     values = set()
-    # 「N件以上」「N件たまったら」だけを拾う（「0件なら」等の別文脈は拾わない）
     pattern = re.compile(r"([0-9]+)\s*件(?:以上|たま)")
     for path in _markdown_files(root, mode):
         for match in pattern.finditer(path.read_text(encoding="utf-8")):
@@ -186,9 +253,37 @@ def _check_threshold(root: Path, mode: str, errors: list[str]) -> None:
         errors.append(f"しきい値: 5件で統一されていません ({sorted(values)})")
 
 
-def _check_secrets(root: Path, mode: str, errors: list[str]) -> None:
+def _check_library_layout(root: Path, errors: list[str]) -> None:
+    """大図書館はMarkdown専用。他形式は秘密情報の抜け道になるので置かせない。"""
+    for path in _library_files(root):
+        if path.suffix.lower() == ".md" or path.name in LIBRARY_ALLOWED_NON_MARKDOWN:
+            continue
+        errors.append(f"構成: library/ はMarkdown専用です ({path.relative_to(root)})")
+
+
+def _scan_targets(root: Path, mode: str):
+    """秘密情報を走査する対象。Markdown以外でも、library/配下のテキストは全部見る。"""
+    seen = set()
     for path in _markdown_files(root, mode):
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        seen.add(path)
+        yield path
+    for path in _library_files(root):
+        if path in seen:
+            continue
+        try:
+            path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        yield path
+
+
+def _check_secrets(root: Path, mode: str, errors: list[str]) -> None:
+    for path in _scan_targets(root, mode):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
             for label, pattern in SECRET_PATTERNS:
                 if pattern.search(line):
                     errors.append(
@@ -197,50 +292,46 @@ def _check_secrets(root: Path, mode: str, errors: list[str]) -> None:
                     break
 
 
-def _check_required_statements(root: Path, required: dict, errors: list[str]) -> None:
-    """安全ルールが『意味』として残っているかを見る。"""
-    for relative, statements in required.items():
+def _check_contract(root: Path, mode: str, errors: list[str]) -> None:
+    for relative, blocks in SAFETY_CONTRACT.items():
+        if mode == INSTALLED and not relative.startswith("library/"):
+            continue
         path = root / relative
         if not path.exists():
             continue
-        text = path.read_text(encoding="utf-8")
-        for label, expression in statements:
-            if not re.search(expression, text, re.M):
-                errors.append(f"安全文: {relative} に「{label}」が見当たりません")
+        lines = _visible_lines(path.read_text(encoding="utf-8"))
+        for label, block in blocks:
+            if not _contains_block(lines, block):
+                errors.append(
+                    f"安全契約: {relative} の「{label}」が原文どおりに見つかりません"
+                )
+
+
+def _check_snippet_contract(root: Path, errors: list[str]) -> None:
+    for relative in ("snippets/claude-md-snippet.md", "INSTALL.md"):
+        path = root / relative
+        if not path.exists():
+            continue
+        lines = _fence_lines(path.read_text(encoding="utf-8"))
+        for contract_line in SNIPPET_CONTRACT:
+            if contract_line not in lines:
+                errors.append(
+                    f"安全契約: {relative} の貼り付けブロックに"
+                    f"「{contract_line[:12]}…」が原文どおりに見つかりません"
+                )
 
 
 def _check_forbidden_statements(root: Path, mode: str, errors: list[str]) -> None:
     for path in _markdown_files(root, mode):
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        for number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), 1
+        ):
             for label, pattern in FORBIDDEN_STATEMENTS:
                 if pattern.search(line):
                     errors.append(
-                        f"安全文: {path.relative_to(root)}:{number} に{label}があります"
+                        f"安全契約: {path.relative_to(root)}:{number} に{label}があります"
                     )
                     break
-
-
-def _check_safety_terms(root: Path, relatives, errors: list[str]) -> None:
-    for relative in relatives:
-        path = root / relative
-        if not path.exists():
-            continue
-        missing = [t for t in SAFETY_TERMS if t not in path.read_text(encoding="utf-8")]
-        if missing:
-            errors.append(f"安全文: {relative} に不足 ({', '.join(missing)})")
-
-
-def _extract_install_snippet(text: str) -> str:
-    marker = "追記する内容"
-    start = text.find(marker)
-    if start < 0:
-        return ""
-    block_start = text.find("```markdown", start)
-    if block_start < 0:
-        return ""
-    block_start = text.find("\n", block_start) + 1
-    block_end = text.find("```", block_start)
-    return text[block_start:block_end].strip()
 
 
 def _check_snippet_matches_install(root: Path, errors: list[str]) -> None:
@@ -249,18 +340,34 @@ def _check_snippet_matches_install(root: Path, errors: list[str]) -> None:
     if not (install.exists() and snippet.exists()):
         return
     source = re.search(
-        r"```markdown\n(.*?)\n```", snippet.read_text(encoding="utf-8"), re.S
+        r"```markdown\r?\n(.*?)\r?\n```", snippet.read_text(encoding="utf-8"), re.S
     )
-    installed = _extract_install_snippet(install.read_text(encoding="utf-8"))
-    if not source or installed != source.group(1).strip():
-        errors.append(
-            "スニペット: INSTALL.md と snippets/claude-md-snippet.md が一致しません"
-        )
+    text = install.read_text(encoding="utf-8")
+    start = text.find("追記する内容")
+    block = re.search(r"```markdown\r?\n(.*?)\r?\n```", text[start:], re.S) if start >= 0 else None
+    if not source or not block or block.group(1).strip() != source.group(1).strip():
+        errors.append("スニペット: INSTALL.md と snippets/claude-md-snippet.md が一致しません")
 
 
-def validate_library(root: Path | str, mode: str | None = None) -> list[str]:
+def validate_instructions_file(path: Path | str) -> list[str]:
+    """常時読み込みファイル（CLAUDE.md / AGENTS.md 等）に契約2行があるか。"""
+    path = Path(path)
+    if not path.is_file():
+        return [f"常時ファイル: {path} が見つかりません"]
+    lines = _visible_lines(path.read_text(encoding="utf-8"))
+    return [
+        f"常時ファイル: {path.name} に「{line[:12]}…」が原文どおりに見つかりません"
+        for line in SNIPPET_CONTRACT
+        if line not in lines
+    ]
+
+
+def validate_library(
+    root: Path | str,
+    mode: str = TEMPLATE,
+    instructions_file: Path | str | None = None,
+) -> list[str]:
     root = Path(root)
-    mode = mode or detect_mode(root)
     if mode not in (TEMPLATE, INSTALLED):
         raise ValueError(f"未知のモード: {mode}")
 
@@ -275,45 +382,58 @@ def validate_library(root: Path | str, mode: str | None = None) -> list[str]:
     _check_links(root, mode, errors)
     _check_catalog(root, errors)
     _check_threshold(root, mode, errors)
+    _check_library_layout(root, errors)
     _check_secrets(root, mode, errors)
-    _check_required_statements(root, LIBRARY_REQUIRED_STATEMENTS, errors)
+    _check_contract(root, mode, errors)
     _check_forbidden_statements(root, mode, errors)
-    _check_safety_terms(root, LIBRARY_SAFETY_TERM_FILES, errors)
 
     if mode == TEMPLATE:
-        _check_required_statements(root, TEMPLATE_REQUIRED_STATEMENTS, errors)
-        _check_safety_terms(root, TEMPLATE_SAFETY_TERM_FILES, errors)
+        _check_snippet_contract(root, errors)
         _check_snippet_matches_install(root, errors)
         for path in _markdown_files(root, mode):
             if "2026-08-05" in path.read_text(encoding="utf-8"):
-                errors.append(f"日付: 固定サンプル日付が残っています ({path.relative_to(root)})")
+                errors.append(
+                    f"日付: 固定サンプル日付が残っています ({path.relative_to(root)})"
+                )
+    if instructions_file is not None:
+        errors.extend(validate_instructions_file(instructions_file))
     return errors
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     mode = None
-    if "--mode" in argv:
-        index = argv.index("--mode")
-        try:
-            mode = argv[index + 1]
-        except IndexError:
-            print("--mode には template か installed を指定してください")
-            return 2
-        del argv[index : index + 2]
+    instructions = None
+    for flag, setter in (("--mode", "mode"), ("--instructions-file", "instructions")):
+        if flag in argv:
+            index = argv.index(flag)
+            if index + 1 >= len(argv):
+                print(f"{flag} には値を指定してください")
+                return 2
+            value = argv[index + 1]
+            del argv[index : index + 2]
+            if setter == "mode":
+                mode = value
+            else:
+                instructions = value
+    # モードは推測しない。パス省略=template、パス指定=installed、--mode があれば優先。
+    if mode is None:
+        mode = TEMPLATE if not argv else INSTALLED
     root = Path(argv[0]) if argv else Path(__file__).resolve().parents[1]
     if not root.is_dir():
         print(f"フォルダが見つかりません: {root}")
         return 2
     try:
-        errors = validate_library(root, mode)
+        errors = validate_library(root, mode, instructions)
     except ValueError as error:
         print(error)
         return 2
     if errors:
         print("\n".join(errors))
         return 1
-    print(f"大図書館の検証に合格しました（{mode or detect_mode(root)}）。")
+    print(f"大図書館の検証に合格しました（{mode}）。")
+    if mode == INSTALLED and instructions is None:
+        print(INSTALLED_CAVEAT)
     return 0
 
 

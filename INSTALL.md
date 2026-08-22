@@ -125,7 +125,7 @@ Claude Code なら、`commands/log.md` と `commands/tidy.md` を `.claude/comma
 - [ ] （任意・推奨）手順1で取得した一時フォルダが残っていれば、導入後の点検を1回走らせた
 
       ```
-      python <取得したフォルダ>/scripts/validate_library.py <作業フォルダ> --mode installed
+      python <取得したフォルダ>/scripts/validate_library.py <作業フォルダ> --mode installed --instructions-file <常時ファイル>
       ```
 
       秘密情報の混入・目録と棚のズレ・安全ルールの欠落をまとめて見ます。合格しなくても導入は完了ですが、内容は利用者に伝えてください
