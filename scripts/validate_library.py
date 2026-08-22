@@ -456,8 +456,9 @@ def _check_forbidden_statements(root: Path, mode: str, errors: list[str]) -> Non
         for number, line in enumerate(
             path.read_text(encoding="utf-8").splitlines(), 1
         ):
+            normalized = unicodedata.normalize("NFKC", line)
             for label, pattern in FORBIDDEN_STATEMENTS:
-                if pattern.search(line):
+                if pattern.search(normalized):
                     errors.append(
                         f"安全契約: {path.relative_to(root)}:{number} に{label}があります"
                     )
