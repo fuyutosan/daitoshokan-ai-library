@@ -3,6 +3,8 @@
 > 🤖 **AIエージェントの方へ**: 利用者に「これを導入して」と言われたら、[INSTALL.md](INSTALL.md) を読んで上から順に実行してください。
 >
 > 🌍 **English version**: [ai-context-library](https://github.com/fuyutosan/ai-context-library)
+>
+> 📦 **最新版**: `v1.0.0` — [変更履歴](CHANGELOG.md) / [GitHub Releases](https://github.com/fuyutosan/daitoshokan-ai-library/releases)
 
 ChatGPTやClaudeに、毎回「私はこういう人間で、こういうプロジェクトをやっていて…」と説明し直すのに疲れていませんか？
 

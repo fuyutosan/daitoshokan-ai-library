@@ -1,6 +1,8 @@
 # 変更履歴
 
-## Unreleased
+## [Unreleased]
+
+## [1.0.0] - 2026-08-22
 
 - 公開テンプレと個人用 `library/` を区別する安全ゲートを追加
 - 秘密情報・個人情報・生ログを記録しないルールを追加
@@ -33,3 +35,6 @@
 - `docs/` を `library/docs/` へ移動。導入先へ一緒にコピーされ、運用ルールからの参照が切れなくなった
 - テスト複製をROOT.parent配下のUUID付きフォルダ方式に変更（tempfile非依存）。16件→36件
 - Markdown表示判定・UTF-8強制・電話番号形式の回帰テストを追加。56件→62件
+
+[Unreleased]: https://github.com/fuyutosan/daitoshokan-ai-library/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/fuyutosan/daitoshokan-ai-library/releases/tag/v1.0.0
