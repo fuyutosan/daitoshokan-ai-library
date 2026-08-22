@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 
@@ -172,37 +173,158 @@ SECRET_PATTERNS = (
             r"[A-Za-z0-9._%+-]+@(?!example\.(?:com|org|net))[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
         ),
     ),
-    # 電話番号: 区切りあり / ハイフンなし10〜11桁 / 国番号つき
+    # 電話番号: 区切りあり / ハイフンなし10〜11桁 / 括弧 / 国番号つき
     ("電話番号", re.compile(r"\b0\d{1,3}[-\s]\d{1,4}[-\s]\d{3,4}\b")),
     ("電話番号", re.compile(r"(?<!\d)0\d{9,10}(?!\d)")),
-    ("電話番号", re.compile(r"\+\d{1,3}[-\s]?(?:\d[-\s]?){8,13}\d")),
+    ("電話番号", re.compile(r"(?<!\d)0\d{1,3}\(\d{1,4}\)\d{3,4}(?!\d)")),
+    (
+        "電話番号",
+        re.compile(r"\+\d{1,3}[-\s]*(?:\(0\)[-\s]*)?(?:\d[-\s]?){8,13}\d"),
+    ),
 )
+
+
+RAW_HTML_TAGS = ("pre", "code", "script", "style", "textarea", "template")
+RAW_HTML_OPEN = re.compile(
+    rf"<\s*({'|'.join(RAW_HTML_TAGS)})\b[^>]*>", re.IGNORECASE
+)
+
+
+def _fence_marker(line: str) -> tuple[str, int, str] | None:
+    """0〜3文字字下げされたMarkdownフェンスの文字・長さ・後続を返す。"""
+    if line.startswith("\t"):
+        return None
+    indent = len(line) - len(line.lstrip(" "))
+    if indent > 3:
+        return None
+    body = line[indent:]
+    if not body or body[0] not in ("`", "~"):
+        return None
+    char = body[0]
+    size = len(body) - len(body.lstrip(char))
+    if size < 3:
+        return None
+    return char, size, body[size:]
+
+
+def _strip_hidden_html(
+    line: str, in_comment: bool, raw_tag: str | None
+) -> tuple[str, bool, str | None]:
+    """HTMLコメントと非本文要素を除き、未閉鎖状態を次行へ渡す。"""
+    visible: list[str] = []
+    position = 0
+    while position < len(line):
+        if in_comment:
+            end = line.find("-->", position)
+            if end < 0:
+                return "".join(visible), True, raw_tag
+            in_comment = False
+            position = end + 3
+            continue
+
+        if raw_tag is not None:
+            close = re.search(rf"</\s*{re.escape(raw_tag)}\s*>", line[position:], re.I)
+            if close is None:
+                return "".join(visible), in_comment, raw_tag
+            position += close.end()
+            raw_tag = None
+            continue
+
+        comment_at = line.find("<!--", position)
+        tag_match = RAW_HTML_OPEN.search(line, position)
+        tag_at = tag_match.start() if tag_match else -1
+        candidates = [value for value in (comment_at, tag_at) if value >= 0]
+        if not candidates:
+            visible.append(line[position:])
+            break
+
+        hidden_at = min(candidates)
+        visible.append(line[position:hidden_at])
+        if comment_at == hidden_at:
+            in_comment = True
+            position = hidden_at + 4
+        else:
+            raw_tag = tag_match.group(1).lower()
+            position = tag_match.end()
+
+    return "".join(visible), in_comment, raw_tag
 
 
 def _visible_lines(text: str) -> list[str]:
     """契約として数えてよい可視本文だけを返す。
 
-    HTMLコメント・コードブロック・引用は、読み手に規則として見えないので数えない。
+    HTMLコメント・コードブロック・引用・raw HTMLの非本文要素は数えない。
+    通常本文として許される0〜3空白の字下げだけを除き、契約行を完全一致で数える。
     """
-    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
-    lines, in_fence = [], False
+    lines: list[str] = []
+    fence_char: str | None = None
+    fence_size = 0
+    in_comment = False
+    raw_tag: str | None = None
     for raw in text.splitlines():
-        line = raw.strip()
-        if line.startswith("```") or line.startswith("~~~"):
-            in_fence = not in_fence
+        if fence_char is not None:
+            marker = _fence_marker(raw)
+            if (
+                marker is not None
+                and marker[0] == fence_char
+                and marker[1] >= fence_size
+                and not marker[2].strip()
+            ):
+                fence_char = None
+                fence_size = 0
             continue
-        if in_fence or line.startswith(">") or not line:
+
+        line, in_comment, raw_tag = _strip_hidden_html(raw, in_comment, raw_tag)
+        marker = _fence_marker(line)
+        if marker is not None:
+            fence_char, fence_size, _ = marker
+            continue
+
+        if not line or line.startswith("\t"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if indent >= 4:
+            continue
+        line = line[indent:]
+        if not line or line.startswith(">"):
             continue
         lines.append(line)
     return lines
 
 
 def _fence_lines(text: str) -> list[str]:
-    """```markdown ブロックの中身（スニペットの貼り付け本文）。"""
-    match = re.search(r"```markdown\r?\n(.*?)\r?\n```", text, re.S)
-    if not match:
-        return []
-    return [l.strip() for l in match.group(1).splitlines() if l.strip()]
+    """可視本文にあるmarkdownフェンスの中身（スニペットの貼り付け本文）。"""
+    in_comment = False
+    raw_tag: str | None = None
+    fence_char: str | None = None
+    fence_size = 0
+    captured: list[str] | None = None
+
+    for raw in text.splitlines():
+        if fence_char is not None:
+            marker = _fence_marker(raw)
+            if (
+                marker is not None
+                and marker[0] == fence_char
+                and marker[1] >= fence_size
+                and not marker[2].strip()
+            ):
+                if captured is not None:
+                    return [line.strip() for line in captured if line.strip()]
+                fence_char = None
+                fence_size = 0
+                continue
+            if captured is not None:
+                captured.append(raw)
+            continue
+
+        line, in_comment, raw_tag = _strip_hidden_html(raw, in_comment, raw_tag)
+        marker = _fence_marker(line)
+        if marker is None:
+            continue
+        fence_char, fence_size, info = marker
+        captured = [] if info.strip().lower() == "markdown" else None
+    return []
 
 
 def _contains_block(lines: list[str], block: tuple[str, ...]) -> bool:
@@ -270,22 +392,30 @@ def _scan_targets(root: Path, mode: str):
     for path in _library_files(root):
         if path in seen:
             continue
+        yield path
+
+
+def _check_utf8(root: Path, mode: str, errors: list[str]) -> bool:
+    """走査対象はUTF-8テキスト専用。読めない対象を合格扱いにしない。"""
+    valid = True
+    for path in _scan_targets(root, mode):
         try:
             path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
-            continue
-        yield path
+            errors.append(
+                f"文字コード: {path.relative_to(root)} をUTF-8として読めません"
+            )
+            valid = False
+    return valid
 
 
 def _check_secrets(root: Path, mode: str, errors: list[str]) -> None:
     for path in _scan_targets(root, mode):
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue
+        text = path.read_text(encoding="utf-8")
         for number, line in enumerate(text.splitlines(), 1):
+            normalized = unicodedata.normalize("NFKC", line)
             for label, pattern in SECRET_PATTERNS:
-                if pattern.search(line):
+                if pattern.search(normalized):
                     errors.append(
                         f"秘密情報: {path.relative_to(root)}:{number} に{label}らしき記述"
                     )
@@ -354,7 +484,11 @@ def validate_instructions_file(path: Path | str) -> list[str]:
     path = Path(path)
     if not path.is_file():
         return [f"常時ファイル: {path} が見つかりません"]
-    lines = _visible_lines(path.read_text(encoding="utf-8"))
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return [f"常時ファイル: {path.name} をUTF-8として読めません"]
+    lines = _visible_lines(text)
     return [
         f"常時ファイル: {path.name} に「{line[:12]}…」が原文どおりに見つかりません"
         for line in SNIPPET_CONTRACT
@@ -379,10 +513,13 @@ def validate_library(
         if not (root / relative).exists():
             errors.append(f"必須ファイル: {relative}")
 
+    _check_library_layout(root, errors)
+    if not _check_utf8(root, mode, errors):
+        return errors
+
     _check_links(root, mode, errors)
     _check_catalog(root, errors)
     _check_threshold(root, mode, errors)
-    _check_library_layout(root, errors)
     _check_secrets(root, mode, errors)
     _check_contract(root, mode, errors)
     _check_forbidden_statements(root, mode, errors)
