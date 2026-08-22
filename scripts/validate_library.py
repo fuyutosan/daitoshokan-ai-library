@@ -410,6 +410,7 @@ def _check_utf8(root: Path, mode: str, errors: list[str]) -> bool:
 
 
 def _check_secrets(root: Path, mode: str, errors: list[str]) -> None:
+    """秘密情報を検査する。呼び出し前に _check_utf8 の成功が必要。"""
     for path in _scan_targets(root, mode):
         text = path.read_text(encoding="utf-8")
         for number, line in enumerate(text.splitlines(), 1):
