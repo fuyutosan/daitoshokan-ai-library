@@ -60,6 +60,9 @@ PHONE_DETECTED = (
     "+81 90 1234 5678",
     "+81-90-1234-5678",
     "+819012345678",
+    "03(1234)5678",
+    "+81 (0)90-1234-5678",
+    "０９０－１２３４－５６７８",
 )
 PHONE_NOT_DETECTED = (
     "2026-09-01",
@@ -340,6 +343,52 @@ class SafetyContractTests(LibraryTestCase):
         repo = self._mutate("library/運用ルール.md", fence)
         self.assertStops([e for e in validate_library(repo) if "安全契約" in e])
 
+    def test_detects_contract_hidden_in_indented_code(self):
+        """攻撃: 契約全体を4文字字下げし、Markdownのコードにする。"""
+        def indent(text):
+            start = text.index("### 安全とプライバシー")
+            end = text.index("## 2. 転記マーク")
+            body = "\n".join("    " + line for line in text[start:end].split("\n"))
+            return text[:start] + body + text[end:]
+
+        repo = self._mutate("library/運用ルール.md", indent)
+        self.assertStops([e for e in validate_library(repo) if "安全契約" in e])
+
+    def test_detects_contract_hidden_in_longer_outer_fence(self):
+        """攻撃: 外側4バッククォートを、内側3個で誤って閉じたように見せる。"""
+        def fence(text):
+            start = text.index("### 安全とプライバシー")
+            end = text.index("## 2. 転記マーク")
+            body = text[start:end]
+            return (
+                text[:start]
+                + "````markdown\n```\n"
+                + body
+                + "```\n````\n\n"
+                + text[end:]
+            )
+
+        repo = self._mutate("library/運用ルール.md", fence)
+        self.assertStops([e for e in validate_library(repo) if "安全契約" in e])
+
+    def test_detects_contract_hidden_in_raw_html(self):
+        """攻撃: 契約全体をHTMLのpre要素へ退避する。"""
+        def hide(text):
+            start = text.index("### 安全とプライバシー")
+            end = text.index("## 2. 転記マーク")
+            return text[:start] + "<pre>\n" + text[start:end] + "</pre>\n\n" + text[end:]
+
+        repo = self._mutate("library/運用ルール.md", hide)
+        self.assertStops([e for e in validate_library(repo) if "安全契約" in e])
+
+    def test_detects_contract_after_unclosed_html_comment(self):
+        """攻撃: 閉じていないHTMLコメントの後ろへ契約を置く。"""
+        repo = self._mutate(
+            "library/運用ルール.md",
+            lambda text: text.replace("### 安全とプライバシー", "<!--\n### 安全とプライバシー", 1),
+        )
+        self.assertStops([e for e in validate_library(repo) if "安全契約" in e])
+
     def test_detects_contract_hidden_in_blockquote(self):
         """攻撃: 契約を引用へ退避する。"""
         def quote(text):
@@ -432,6 +481,15 @@ class LibraryLayoutTests(LibraryTestCase):
         (repo / "library" / "棚" / "image.png").write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe")
         errors = validate_library(repo)
         self.assertTrue(any("構成" in e for e in errors), errors)
+
+    def test_unreadable_allowed_file_is_rejected(self):
+        """攻撃: 許可名の.gitignoreをUTF-16にし、秘密情報走査を回避する。"""
+        repo = self._copy()
+        (repo / "library" / ".gitignore").write_text(
+            "sk-proj-" + "U" * 40 + "\n", encoding="utf-16"
+        )
+        errors = validate_library(repo)
+        self.assertTrue(any("文字コード" in e for e in errors), errors)
 
 
 class SecretScanTests(LibraryTestCase):
@@ -537,6 +595,11 @@ class InstructionsFileTests(LibraryTestCase):
 
     def test_instructions_contract_in_comment_is_not_counted(self):
         project = self._installed(instructions="<!--\n" + "\n".join(SNIPPET_CONTRACT) + "\n-->\n")
+        self.assertStops(validate_instructions_file(project / "CLAUDE.md"))
+
+    def test_instructions_contract_in_indented_code_is_not_counted(self):
+        instructions = "\n".join("    " + line for line in SNIPPET_CONTRACT) + "\n"
+        project = self._installed(instructions=instructions)
         self.assertStops(validate_instructions_file(project / "CLAUDE.md"))
 
     def test_caveat_is_printed_when_instructions_not_checked(self):
