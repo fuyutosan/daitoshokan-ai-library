@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-10
+
+- `library/詳細記録/` を追加。会話全文ではなく、別のAIが判断理由・現在地・次の作業まで迷わず引き継ぐための完全復帰用レイヤー
+- 「会話履歴が消えたとき、日誌だけで再開できるか」を詳細記録の作成基準として明文化
+- 日誌を5行以内に保ったまま、必要な作業だけ `詳細:` で詳細記録を参照できるようにした
+- 詳細記録のテンプレートに、目的・開始時点・実施内容・判断理由・却下案・ユーザーの修正・現在地・未完了事項・次の作業・参照ファイル・成果物・知見を追加
+- 既存の `日誌 → 棚 → 年鑑`、必要なものだけ読む方針、`｜棚:` と `✅` の整理契約は変更なし
+
 ## [1.0.0] - 2026-08-22
 
 - 公開テンプレと個人用 `library/` を区別する安全ゲートを追加
@@ -36,5 +44,6 @@
 - テスト複製をROOT.parent配下のUUID付きフォルダ方式に変更（tempfile非依存）。16件→36件
 - Markdown表示判定・UTF-8強制・電話番号形式の回帰テストを追加。56件→62件
 
-[Unreleased]: https://github.com/fuyutosan/daitoshokan-ai-library/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/fuyutosan/daitoshokan-ai-library/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/fuyutosan/daitoshokan-ai-library/releases/tag/v1.1.0
 [1.0.0]: https://github.com/fuyutosan/daitoshokan-ai-library/releases/tag/v1.0.0
