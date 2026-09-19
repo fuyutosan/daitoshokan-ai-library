@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-19
+
+- 詳細記録の「次にやること」を、やってよいこと・やらないこと・終わったと言える条件・次に進んでよいかの4点に構造化。再開したAIが作業範囲を勝手に広げないための境界を残せるようにした
+- 作業が終わったかどうかと、次に進んでよいかどうかを別の問いとして書くことを運用ルールに明文化した
+- 詳細記録を読んで再開する側に「次にやることの範囲の外に出ない」ルールを追加した
+- 前提が変わったら判断からやり直す条件、同じ思い込みを繰り返さないための見分け方を、任意項目として詳細記録に追加した
+- `INSTALL.md` の取得ファイル一覧とフォルダ図に `library/詳細記録/README.md` が抜けていたのを修正した（gitを使わず導入した場合に詳細記録の型が届かなかった）
+- validatorに、配布テンプレートの詳細記録の型から境界の行が消えていないかの検査を追加した（templateモードのみ。導入済みlibraryの検査は変更なし）
+- 新規ファイルの追加はなし。日誌 → 棚 → 年鑑、`｜棚:` と `✅` の整理契約、未転記のしきい値、安全契約、常時読み込みスニペットはすべて変更なし。既存の詳細記録を書き直す必要はない
+
 ## [1.1.0] - 2026-09-10
 
 - `library/詳細記録/` を追加。会話全文ではなく、別のAIが判断理由・現在地・次の作業まで迷わず引き継ぐための完全復帰用レイヤー
@@ -44,6 +54,7 @@
 - テスト複製をROOT.parent配下のUUID付きフォルダ方式に変更（tempfile非依存）。16件→36件
 - Markdown表示判定・UTF-8強制・電話番号形式の回帰テストを追加。56件→62件
 
-[Unreleased]: https://github.com/fuyutosan/daitoshokan-ai-library/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/fuyutosan/daitoshokan-ai-library/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/fuyutosan/daitoshokan-ai-library/releases/tag/v1.2.0
 [1.1.0]: https://github.com/fuyutosan/daitoshokan-ai-library/releases/tag/v1.1.0
 [1.0.0]: https://github.com/fuyutosan/daitoshokan-ai-library/releases/tag/v1.0.0

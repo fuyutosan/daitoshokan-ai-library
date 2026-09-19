@@ -56,6 +56,11 @@ TEMPLATE_ONLY_REQUIRED_FILES = (
     "commands/tidy.md",
 )
 
+# 詳細記録の型は配布テンプレート側の資産。導入済みlibraryには必須にしない（v1.1導入者の後方互換）。
+TEMPLATE_ONLY_LIBRARY_FILES = (
+    "library/詳細記録/README.md",
+)
+
 # library/ 配下で Markdown 以外に置いてよいもの
 LIBRARY_ALLOWED_NON_MARKDOWN = (".gitkeep", ".gitignore")
 
@@ -137,6 +142,16 @@ SAFETY_CONTRACT = {
 SNIPPET_CONTRACT = (
     '**安全** — APIキー、トークン、パスワード、Cookie/セッション、`.env`/認証ファイルの中身、金融情報、住所・電話・メール、顧客の非公開情報、生ログは記録しない。値を書かず「移した」「設定した」とだけ記録する。',
     '**書き手** — この `library/` に書くAIは1つだけ。別のAIも使うなら、`library/` の外に staging を作ってそこへ書き、検品したものだけを1つの経路で `library/` へ移す。同じ日誌に2つのAIが同時に追記しない。',
+)
+
+# 詳細記録の型のうち、次の作業範囲の境界を担う行。テンプレート側の形だけを固定する。
+# 安全契約ではないので CONTRACT_DIGEST には含めない。
+DETAIL_RECORD_TEMPLATE = "library/詳細記録/README.md"
+DETAIL_RECORD_REQUIRED_LINES = (
+    "## 次にやること（ここから先は勝手に進めない）",
+    "- やらないこと: 今回の範囲の外。ついでに直さない・広げないもの",
+    "- 終わったと言える条件: 何が確認できたら、この一手が終わりか",
+    "- 次に進んでよいか: 進めてよい ／ 相談してから ／ ここで止める",
 )
 
 # 契約の隣に矛盾する許可文を足す攻撃への網。網羅は主張しない。
@@ -481,6 +496,24 @@ def _check_snippet_matches_install(root: Path, errors: list[str]) -> None:
         errors.append("スニペット: INSTALL.md と snippets/claude-md-snippet.md が一致しません")
 
 
+def _check_detail_record_template(root: Path, errors: list[str]) -> None:
+    """詳細記録の型から、次の作業範囲の境界が静かに消えていないか。
+
+    型は ```markdown ブロックの中にあるので、可視本文ではなくフェンスの中身を見る。
+    ブロックの外へ出した場合も不合格にする。
+    """
+    path = root / DETAIL_RECORD_TEMPLATE
+    if not path.exists():
+        return
+    lines = _fence_lines(path.read_text(encoding="utf-8"))
+    for required in DETAIL_RECORD_REQUIRED_LINES:
+        if required not in lines:
+            errors.append(
+                f"詳細記録: {DETAIL_RECORD_TEMPLATE} の型に"
+                f"「{required[:16]}…」が原文どおりに見つかりません"
+            )
+
+
 def validate_instructions_file(path: Path | str) -> list[str]:
     """常時読み込みファイル（CLAUDE.md / AGENTS.md 等）に契約2行があるか。"""
     path = Path(path)
@@ -510,7 +543,11 @@ def validate_library(
     errors: list[str] = []
     required = LIBRARY_REQUIRED_FILES
     if mode == TEMPLATE:
-        required = TEMPLATE_ONLY_REQUIRED_FILES + LIBRARY_REQUIRED_FILES
+        required = (
+            TEMPLATE_ONLY_REQUIRED_FILES
+            + LIBRARY_REQUIRED_FILES
+            + TEMPLATE_ONLY_LIBRARY_FILES
+        )
     for relative in required:
         if not (root / relative).exists():
             errors.append(f"必須ファイル: {relative}")
@@ -529,6 +566,7 @@ def validate_library(
     if mode == TEMPLATE:
         _check_snippet_contract(root, errors)
         _check_snippet_matches_install(root, errors)
+        _check_detail_record_template(root, errors)
         for path in _markdown_files(root, mode):
             if "2026-08-05" in path.read_text(encoding="utf-8"):
                 errors.append(
