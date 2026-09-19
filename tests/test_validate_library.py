@@ -25,6 +25,8 @@ from scripts.validate_library import (  # noqa: E402
     INSTALLED_CAVEAT,
     SAFETY_CONTRACT,
     SNIPPET_CONTRACT,
+    DETAIL_RECORD_REQUIRED_LINES,
+    DETAIL_RECORD_TEMPLATE,
     TEMPLATE,
     main,
     validate_instructions_file,
@@ -526,6 +528,50 @@ class SecretScanTests(LibraryTestCase):
     def test_example_domain_is_not_flagged(self):
         repo = self._mutate("README.md", lambda t: t + "\n連絡先の例: taro@example.com\n")
         self.assertPasses([e for e in validate_library(repo) if "秘密情報" in e])
+
+
+class DetailRecordTemplateTests(LibraryTestCase):
+    """詳細記録の型から「次にやってよい範囲」が消えていないこと（templateのみ）。"""
+
+    def test_template_requires_detail_record_readme(self):
+        repo = self._copy()
+        (repo / DETAIL_RECORD_TEMPLATE).unlink()
+        errors = validate_library(repo, TEMPLATE)
+        self.assertTrue(
+            any("必須ファイル" in e and "詳細記録" in e for e in errors), errors
+        )
+
+    def test_installed_mode_does_not_require_detail_record(self):
+        """後方互換: v1.1で詳細記録フォルダを受け取っていない導入者を落とさない。"""
+        project = self._installed()
+        shutil.rmtree(project / "library" / "詳細記録")
+        self.assertPasses(validate_library(project, INSTALLED))
+
+    def test_detects_removed_boundary_line(self):
+        for required in DETAIL_RECORD_REQUIRED_LINES:
+            with self.subTest(required=required):
+                repo = self._mutate(
+                    DETAIL_RECORD_TEMPLATE,
+                    lambda t: "\n".join(
+                        line for line in t.split("\n") if line.strip() != required
+                    ),
+                )
+                self.assertStops(
+                    [e for e in validate_library(repo) if "詳細記録" in e], required
+                )
+
+    def test_boundary_lines_outside_template_block_are_not_counted(self):
+        """攻撃: 型のブロックの外へ出して、形だけ残す。"""
+        def move_out(text):
+            kept = [
+                line
+                for line in text.split("\n")
+                if line.strip() not in DETAIL_RECORD_REQUIRED_LINES
+            ]
+            return "\n".join(kept) + "\n\n" + "\n".join(DETAIL_RECORD_REQUIRED_LINES) + "\n"
+
+        repo = self._mutate(DETAIL_RECORD_TEMPLATE, move_out)
+        self.assertStops([e for e in validate_library(repo) if "詳細記録" in e])
 
 
 class InstalledModeTests(LibraryTestCase):

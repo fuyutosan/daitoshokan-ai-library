@@ -45,6 +45,7 @@ git clone https://github.com/fuyutosan/daitoshokan-ai-library.git
 library/目録.md
 library/運用ルール.md
 library/日誌/README.md
+library/詳細記録/README.md
 library/docs/安全とプライバシー.md
 library/docs/複数AIで使う場合.md
 library/棚/仕事.md
@@ -69,6 +70,7 @@ raw の URL は `https://raw.githubusercontent.com/fuyutosan/daitoshokan-ai-libr
 │   ├── 運用ルール.md
 │   ├── 棚/（4冊）
 │   ├── docs/（安全とプライバシー・複数AIで使う場合）
+│   ├── 詳細記録/README.md
 │   └── 日誌/README.md
 └── <常時ファイル>
 ```

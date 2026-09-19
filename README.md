@@ -4,7 +4,7 @@
 >
 > 🌍 **English version**: [ai-context-library](https://github.com/fuyutosan/ai-context-library)
 >
-> 📦 **最新版**: `v1.1.0` — [変更履歴](CHANGELOG.md) / [GitHub Releases](https://github.com/fuyutosan/daitoshokan-ai-library/releases)
+> 📦 **最新版**: `v1.2.0` — [変更履歴](CHANGELOG.md) / [GitHub Releases](https://github.com/fuyutosan/daitoshokan-ai-library/releases)
 
 ChatGPTやClaudeに、毎回「私はこういう人間で、こういうプロジェクトをやっていて…」と説明し直すのに疲れていませんか？
 
@@ -189,6 +189,9 @@ A. 各棚の「⚠️ ここから下はサンプルです」より下は例示�
 
 **Q. 入れようとしたけど途中で止まってしまいました。**
 A. まずは [INSTALL.md](INSTALL.md) をAIにもう一度読ませて、どのステップで止まったかを聞いてください。それでも進まない場合、導入をSTEP 0〜9に分解して、環境の確認・つまずいたときの対処・引き継ぎのテストまで書いた手順をnoteに用意しています → [AIが前回の続きから始められる環境を作る手順](https://note.com/fuyutopandasan/n/n67978c6fcb0b)（3,980円）。**無料版に無い機能が入っているわけではありません。** 手順を細かく分けて、詰まりやすい場所に先回りしてあるものです。
+
+**Q. AIがセッションをまたぐと「ついでにこれも直しておきました」と余計なことをします。**
+A. 続きがある作業は `library/詳細記録/` に1件だけ記録を作り、「次にやること」に**やってよいこと・やらないこと・終わったと言える条件**を書いておきます。再開したAIはその範囲の外に出ません。書き方は `library/運用ルール.md` にあります。
 
 **Q. 家族や仕事仲間と共有できますか？**
 A. できます。ただしlibraryの中身には個人情報や機密情報を書きがちなので、共有・公開の前に必ず中身を確認してください。
